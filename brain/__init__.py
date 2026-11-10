@@ -1,3 +1,3 @@
-"""🧠 大脑(Brain)—— 面向 LLM 的 CLI 知识库,类 Obsidian。"""
+"""🧠 Brain — CLI-first knowledge base & second brain for LLMs."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -1,4 +1,4 @@
-"""链接图谱:把双向链接构建成图,导出为 ASCII / Graphviz DOT / JSON。"""
+"""Link graph: construct directional graphs from wikilinks, export to ASCII / DOT / JSON."""
 from __future__ import annotations
 
 import json
@@ -24,7 +24,7 @@ def build_graph(vault):
 
 def to_dot(g) -> str:
     lines = [
-        "digraph 大脑 {",
+        "digraph Brain {",
         "  rankdir=LR;",
         '  node [shape=note, style="rounded,filled", fillcolor="#f5f5f4"];',
         '  edge [color="#a8a29e"];',
@@ -41,10 +41,9 @@ def to_dot(g) -> str:
             if not r and raw not in seen:
                 seen.add(raw)
                 lines.append(
-                    f'  "{raw}(未找到)" [shape=ellipse, dashed, fillcolor="#fee2e2"];'
+                    f'  "{raw} (missing)" [shape=ellipse, dashed, fillcolor="#fee2e2"];'
                 )
-                lines.append(f'  "{t}" -> "{raw}(未找到)" [dashed, color="#ef4444"];'
-                )
+                lines.append(f'  "{t}" -> "{raw} (missing)" [dashed, color="#ef4444"];')
     lines.append("}")
     return "\n".join(lines)
 
@@ -52,11 +51,12 @@ def to_dot(g) -> str:
 def to_json(g) -> str:
     data = {
         t: {
-            "出链": [r for r in node["out"] if r],
-            "未解析": [raw for raw, r in zip(node["raw_out"], node["out"]) if not r],
-            "反向链接": node["inn"],
-            "更新时间": node["note"].updated,
-            "标签": node["note"].tags,
+            "folder": node["note"].category,
+            "outlinks": [r for r in node["out"] if r],
+            "unresolved": [raw for raw, r in zip(node["raw_out"], node["out"]) if not r],
+            "backlinks": node["inn"],
+            "updated": node["note"].updated,
+            "tags": node["note"].tags,
         }
         for t, node in g.items()
     }
@@ -64,16 +64,15 @@ def to_json(g) -> str:
 
 
 def to_ascii(g) -> str:
-    lines = [f"🕸️  知识图谱(共 {len(g)} 个节点)", ""]
+    lines = [f"🕸️  Knowledge Graph ({len(g)} nodes)", ""]
     for t in sorted(g):
         node = g[t]
         out = [r for r in node["out"] if r]
-        bad = [
-            raw for raw, r in zip(node["raw_out"], node["out"]) if not r
-        ]
-        lines.append(f"📄 {t}")
-        lines.append("   ├─ 出链 → " + ("、".join(dict.fromkeys(out)) or "无"))
+        bad = [raw for raw, r in zip(node["raw_out"], node["out"]) if not r]
+        folder_tag = f" [{node['note'].category}]" if node["note"].category else ""
+        lines.append(f"📄 {t}{folder_tag}")
+        lines.append("   ├─ Outlinks   → " + (", ".join(dict.fromkeys(out)) or "none"))
         if bad:
-            lines.append("   ├─ 失效 → " + "、".join(dict.fromkeys(bad)))
-        lines.append("   └─ 反向 ← " + ("、".join(node["inn"]) or "无"))
+            lines.append("   ├─ Unresolved → " + ", ".join(dict.fromkeys(bad)))
+        lines.append("   └─ Backlinks  ← " + (", ".join(node["inn"]) or "none"))
     return "\n".join(lines)

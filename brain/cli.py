@@ -1,4 +1,4 @@
-"""🧠 大脑 —— 命令行界面(全中文交互)。"""
+"""🧠 Brain — Command-line interface and interactive shell."""
 from __future__ import annotations
 
 import argparse
@@ -8,47 +8,55 @@ import subprocess
 import sys
 
 from . import __version__
-from .vault import Vault, daily_template, LINK_RE
+from .vault import (
+    Vault,
+    daily_template,
+    soul_template,
+    LINK_RE,
+    CORE_DIR,
+    BRAIN_DIR,
+    DAILY_DIR,
+)
 from .search import search, snippet, tokenize
 from .graph import build_graph, to_dot, to_json, to_ascii
 
 TTY = sys.stdout.isatty()
 
 
-def c(code, s):
+def c(code: str, s: str) -> str:
     return f"\033[{code}m{s}\033[0m" if TTY else str(s)
 
 
-def bold(s):
+def bold(s: str) -> str:
     return c("1", s)
 
 
-def yellow(s):
+def yellow(s: str) -> str:
     return c("33", s)
 
 
-def green(s):
+def green(s: str) -> str:
     return c("32", s)
 
 
-def cyan(s):
+def cyan(s: str) -> str:
     return c("36", s)
 
 
-def dim(s):
+def dim(s: str) -> str:
     return c("2", s)
 
 
-def dwidth(s):
+def dwidth(s: str) -> int:
     return sum(2 if ord(ch) > 0x2E7F else 1 for ch in str(s))
 
 
-def pad(s, w):
+def pad(s: str, w: int) -> str:
     s = str(s)
     return s + " " * max(0, w - dwidth(s))
 
 
-def highlight(text, terms, code="33"):
+def highlight(text: str, terms, code: str = "33") -> str:
     terms = sorted({str(t).lower() for t in terms if t}, key=len, reverse=True)
     if not terms or not TTY:
         return text
@@ -81,73 +89,117 @@ def highlight(text, terms, code="33"):
     return "".join(out)
 
 
-def query_terms(query):
+def query_terms(query: str):
     return {query.strip().lower()} | {
         t.lower() for t in tokenize(query) if len(t) > 1
     }
 
 
-def render_note(note):
+def render_note(note) -> str:
     if not TTY:
         return note.content
     return LINK_RE.sub(lambda m: cyan(m.group(0)), note.content)
 
 
-def open_editor(vault, path):
+def open_editor(vault: Vault, path) -> None:
     editor = os.environ.get("EDITOR", "vi")
     try:
         subprocess.call(shlex.split(editor) + [str(path)])
     except FileNotFoundError:
-        print(yellow(f"⚠️  找不到编辑器「{editor}」,请设置 EDITOR 环境变量"))
+        print(yellow(f'⚠️  Editor "{editor}" not found. Set EDITOR environment variable.'))
     finally:
         vault.invalidate_cache()
 
 
-# ─────────────────────────── 命令处理 ───────────────────────────
+# ─────────────────────────── Command Handlers ───────────────────────────
 
 
-def cmd_init(vault, args):
+def cmd_init(vault: Vault, args) -> None:
     vault.ensure()
-    print(green(f"🧠 知识库已就绪:{vault.path}"))
-    print(dim("提示:用 `brain 新建 \"标题\"` 开始记录,或 `brain 交互` 进入交互模式。"))
+    print(green(f"🧠 Brain vault ready at: {vault.path}"))
+    print(dim("   Structure: core/ [soul & directives] · brain/ [notes] · daily/ [journal]"))
+    print(dim('   Tip: Use `brain new "Title"` to create a note, or `brain repl` for interactive shell.'))
 
 
-def cmd_new(vault, args):
+def cmd_core(vault: Vault, args) -> None:
     vault.ensure()
-    note = vault.create(args.title.strip(), content=args.content, tags=args.tags)
-    print(green(f"✅ 已创建《{note.path.stem}》"))
+    name = getattr(args, "name", "soul") or "soul"
+    if getattr(args, "list", False):
+        cores = vault.core_notes()
+        print(bold(f"🧠 Core Memory ({len(cores)} notes in core/):"))
+        for c_note in cores:
+            print(f"  - {c_note.path.stem} ({c_note.updated})")
+        return
+
+    content_to_set = getattr(args, "set", None)
+    if content_to_set is not None:
+        content_to_set = content_to_set.replace("\\n", "\n")
+        note = vault.save_core(name, content=content_to_set)
+        print(green(f'✅ Core note "{note.path.stem}" updated in core/'))
+        return
+
+    note = vault.get_core(name)
+    if note is None:
+        if name.lower() == "soul":
+            note = vault.save_core("soul")
+        else:
+            print(yellow(f'⚠️  Core note "{name}" not found in core/'))
+            return
+
+    if getattr(args, "edit", False):
+        open_editor(vault, note.path)
+    else:
+        print(bold(f"🧠 Core Soul [core/{note.path.name}] — {note.updated}"))
+        print(dim("─" * 52))
+        print(note.content)
+
+
+def cmd_new(vault: Vault, args) -> None:
+    vault.ensure()
+    folder = getattr(args, "folder", BRAIN_DIR) or BRAIN_DIR
+    content = args.content
+    if content:
+        content = content.replace("\\n", "\n")
+    note = vault.create(
+        args.title.strip(),
+        content=content,
+        tags=args.tags,
+        folder=folder,
+    )
+    print(green(f'✅ Created note: 《{note.path.stem}》 in [{note.category}]'))
     print(dim(f"   {note.path}"))
     if args.edit:
         open_editor(vault, note.path)
 
 
-def cmd_open(vault, args):
+def cmd_open(vault: Vault, args) -> None:
     note = vault.find(args.title)
     if note is None:
-        print(yellow(f"⚠️  找不到笔记《{args.title}》"))
+        print(yellow(f'⚠️  Note "{args.title}" not found'))
         return
     open_editor(vault, note.path)
 
 
-def cmd_show(vault, args):
+def cmd_show(vault: Vault, args) -> None:
     note = vault.find(args.title)
     if note is None:
-        print(yellow(f"⚠️  找不到笔记《{args.title}》"))
+        print(yellow(f'⚠️  Note "{args.title}" not found'))
         return
     meta = (
-        f"《{note.path.stem}》 {note.updated}  "
-        f"标签:{(' '.join('#' + t for t in note.tags)) or '无'}  "
-        f"链接:{len(note.links)}"
+        f"《{note.path.stem}》 [{note.category}] {note.updated}  "
+        f"Tags: {(' '.join('#' + t for t in note.tags)) or 'none'}  "
+        f"Links: {len(note.links)}"
     )
     print(dim(meta))
-    print(dim("─" * 48))
+    print(dim("─" * 52))
     print(note.content if args.raw else render_note(note))
 
 
-def cmd_list(vault, args):
-    notes = vault.notes()
+def cmd_list(vault: Vault, args) -> None:
+    folder = getattr(args, "folder", None)
+    notes = vault.notes(folder=folder)
     if not notes:
-        print(dim("(知识库为空)"))
+        print(dim("(Vault is empty)"))
         return
     notes.sort(key=lambda n: -n.mtime)
     rmap = vault.resolve_map()
@@ -158,120 +210,124 @@ def cmd_list(vault, args):
             r = rmap.get(t.lower())
             if r:
                 inlink[r] = inlink.get(r, 0) + 1
-    print(bold(f"📚 共 {len(notes)} 篇笔记") + dim(f"(仓库:{vault.path})"))
-    print(dim(pad("标题", 26) + pad("更新时间", 17) + pad("反链", 5) + "标签"))
-    print(dim("─" * 64))
+    folder_str = f" in [{folder}]" if folder else ""
+    print(bold(f"📚 {len(notes)} note(s){folder_str}") + dim(f" (vault: {vault.path})"))
+    print(dim(pad("Title", 26) + pad("Folder", 10) + pad("Updated", 17) + pad("Inlinks", 9) + "Tags"))
+    print(dim("─" * 74))
     for n in notes[: args.limit or len(notes)]:
         tags = " ".join("#" + t for t in n.tags)
         print(
             pad(n.path.stem, 26)
+            + pad(f"[{n.category}]", 10)
             + pad(n.updated, 17)
-            + pad(str(inlink.get(n.path.stem, 0)), 5)
+            + pad(str(inlink.get(n.path.stem, 0)), 9)
             + dim(tags)
         )
 
 
-def cmd_search(vault, args):
+def cmd_search(vault: Vault, args) -> None:
     q = args.query.strip()
     if not q:
-        print(yellow("⚠️  请输入关键词"))
+        print(yellow("⚠️  Please provide a search query"))
         return
     results = search(vault.notes(), q, args.limit)
     if not results:
-        print(dim(f"🔍「{q}」没有匹配的笔记。"))
+        print(dim(f'🔍 No notes matching "{q}".'))
         return
     terms = query_terms(q)
-    print(bold(f"🔍 搜索「{q}」") + dim(f" 共 {len(results)} 条结果"))
+    print(bold(f'🔍 Search "{q}"') + dim(f" — found {len(results)} result(s)"))
     print()
     for i, (score, hits, n) in enumerate(results, 1):
         title = highlight(n.path.stem, [q]) if TTY else n.path.stem
+        category = f"[{n.category}] " if n.category else ""
         print(
-            f"{bold(str(i) + '.')} 《{title}》 "
-            + dim(f"匹配 {hits} 项 · {n.updated}")
+            f"{bold(str(i) + '.')} {category}《{title}》 "
+            + dim(f"hits: {hits} · score: {score} · {n.updated}")
         )
         print("   " + highlight(snippet(n.content, q), terms))
         print()
 
 
-def cmd_delete(vault, args):
+def cmd_delete(vault: Vault, args) -> None:
     note = vault.find(args.title)
     if note is None:
-        print(yellow(f"⚠️  找不到笔记《{args.title}》"))
+        print(yellow(f'⚠️  Note "{args.title}" not found'))
         return
     if not args.force:
-        ans = input(f"确认删除《{note.path.stem}》?[y/N] ").strip().lower()
-        if ans not in ("y", "yes", "是"):
-            print(dim("已取消"))
+        ans = input(f'Are you sure you want to delete "{note.path.stem}"? [y/N] ').strip().lower()
+        if ans not in ("y", "yes"):
+            print(dim("Cancelled"))
             return
     affected = [n.path.stem for n in vault.backlinks(note.path.stem)]
     vault.delete(note)
-    print(green(f"🗑️  已删除《{note.path.stem}》"))
+    print(green(f'🗑️  Deleted "{note.path.stem}"'))
     if affected:
-        print(dim(f"   注意:{len(affected)} 篇笔记曾链接到它:" + "、".join(affected)))
+        print(dim(f"   Note: {len(affected)} note(s) linked to it: " + ", ".join(affected)))
 
 
-def cmd_rename(vault, args):
+def cmd_rename(vault: Vault, args) -> None:
     new_note, changed = vault.rename(args.old, args.new)
-    print(green(f"✏️  已重命名:《{args.old}》→《{new_note.path.stem}》"))
+    print(green(f'✏️  Renamed: "{args.old}" → "{new_note.path.stem}"'))
     if changed:
-        print(dim(f"   已同步更新 {changed} 篇笔记中的链接"))
+        print(dim(f"   Updated wikilinks in {changed} note(s)"))
 
 
-def cmd_links(vault, args):
+def cmd_links(vault: Vault, args) -> None:
     note = vault.find(args.title)
     if note is None:
-        print(yellow(f"⚠️  找不到笔记《{args.title}》"))
+        print(yellow(f'⚠️  Note "{args.title}" not found'))
         return
     out = vault.outlinks(note)
     inn = vault.backlinks(note.path.stem)
-    print(bold(f"🔗 《{note.path.stem}》"))
-    print(dim("出链:"))
+    print(bold(f'🔗 Links for "{note.path.stem}" [{note.category}]'))
+    print(dim("Outlinks:"))
     if out:
         for raw, r in out:
             mark = green("✓") if r else yellow("✗")
-            tail = "" if r else dim("(未找到对应笔记)")
+            tail = "" if r else dim(" (unresolved)")
             print(f"  {mark} {raw}{tail}")
     else:
-        print(dim("  (无)"))
-    print(dim("反向链接:"))
+        print(dim("  (none)"))
+    print(dim("Backlinks:"))
     if inn:
         for n in inn:
-            print(f"  ← {n.path.stem}")
+            print(f"  ← {n.path.stem} [{n.category}]")
     else:
-        print(dim("  (无)"))
+        print(dim("  (none)"))
 
 
-def cmd_tags(vault, args):
+def cmd_tags(vault: Vault, args) -> None:
     idx = vault.tags_index()
     if args.tag:
         t = args.tag.lstrip("#").strip().lower()
         notes = idx.get(t, [])
-        print(bold(f"🏷️  #{t}  共 {len(notes)} 篇"))
+        print(bold(f"🏷️  #{t} — {len(notes)} note(s)"))
         for n in sorted(notes, key=lambda x: -x.mtime):
-            print(f"  - {n.path.stem} {dim(n.updated)}")
+            print(f"  - {n.path.stem} [{n.category}] {dim(n.updated)}")
         return
     if not idx:
-        print(dim("(暂无标签)"))
+        print(dim("(No tags found in vault)"))
         return
-    print(bold(f"🏷️  共 {len(idx)} 个标签"))
+    print(bold(f"🏷️  {len(idx)} tag(s) across vault:"))
     for t, ns in sorted(idx.items(), key=lambda x: (-len(x[1]), x[0])):
         print(f"  #{t} {dim(f'({len(ns)})')}")
 
 
-def cmd_daily(vault, args):
+def cmd_daily(vault: Vault, args) -> None:
     vault.ensure()
     path = vault.daily_path()
     if not path.exists():
-        vault.create(path.stem, content=daily_template())
-        print(green(f"✅ 已创建今日笔记:{path}"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(daily_template(), encoding="utf-8")
+        print(green(f"✅ Created today's daily log: {path}"))
     note = vault.find(path.stem)
     if args.edit:
         open_editor(vault, path)
     else:
-        print(note.content)
+        print(note.content if note else path.read_text(encoding="utf-8"))
 
 
-def cmd_graph(vault, args):
+def cmd_graph(vault: Vault, args) -> None:
     g = build_graph(vault)
     fmt = args.format
     if fmt == "dot":
@@ -284,80 +340,85 @@ def cmd_graph(vault, args):
         from pathlib import Path
 
         Path(args.out).write_text(text, encoding="utf-8")
-        print(green(f"✅ 图谱已导出:{args.out}(共 {len(g)} 个节点)"))
+        print(green(f"✅ Graph exported to: {args.out} ({len(g)} nodes)"))
     else:
         print(text)
 
 
-def cmd_orphans(vault, args):
+def cmd_orphans(vault: Vault, args) -> None:
     g = build_graph(vault)
     orphans = sorted(
         t
         for t, n in g.items()
-        if not n["inn"] and not [r for r in n["out"] if r]
+        if not n["inn"]
+        and not [r for r in n["out"] if r]
+        and t.lower() != "readme"
     )
     if not orphans:
-        print(green("🎉 没有孤立笔记,知识网络很健康。"))
+        print(green("🎉 No orphan notes! Knowledge graph is fully connected."))
         return
-    print(bold(f"🧊 孤立笔记(无出链、无反向链接)共 {len(orphans)} 篇:"))
+    print(bold(f"🧊 {len(orphans)} orphan note(s) (no inlinks, no outlinks):"))
     for t in orphans:
-        print(f"  - {t}")
+        cat = f"[{g[t]['note'].category}] " if g[t]["note"].category else ""
+        print(f"  - {cat}{t}")
 
 
-def cmd_stats(vault, args):
-    print(bold("📊 知识库统计"))
+def cmd_stats(vault: Vault, args) -> None:
+    print(bold("📊 Knowledge Base Statistics"))
     for k, v in vault.stats().items():
-        print(f"  {k}:{v}")
+        label = k.replace("_", " ").title()
+        print(f"  {label}: {v}")
 
 
-def cmd_mcp(vault, args):
+def cmd_mcp(vault: Vault, args) -> None:
     from .mcp import main as mcp_main
 
-    print(dim(f"🧠 大脑 MCP 服务启动中(仓库:{vault.path})…"), file=sys.stderr)
+    print(dim(f"🧠 Brain MCP server running (vault: {vault.path})…"), file=sys.stderr)
     mcp_main(vault.path)
 
 
-# ─────────────────────────── 交互模式 ───────────────────────────
+# ─────────────────────────── Interactive Shell (REPL) ───────────────────────────
 
-REPL_HELP = """可用命令:
-  新建 <标题> [-t 标签...] [-e]     创建笔记(-e 用编辑器打开)
-  打开 <标题>                       用 $EDITOR 打开笔记
-  查看 <标题>                       显示笔记内容
-  列表 [-n 数量]                    列出全部笔记
-  搜索 <关键词> [-n 数量]           中文全文搜索
-  删除 <标题> [-f]                  删除笔记
-  重命名 <旧> <新>                  重命名并同步链接
-  链接 <标题>                       查看出链与反向链接
-  标签 [标签名]                     列出标签 / 按标签筛选
-  日记 [-e]                         查看或创建今日笔记
-  图谱 [-f ascii|dot|json] [-o 文件] 导出链接图谱
-  孤立                              列出孤立笔记
-  统计                              知识库统计
-  mcp                               启动 MCP 服务(供 LLM 使用)
-  帮助 / 退出"""
+REPL_HELP = """Available Commands:
+  core [-e] [-s <text>] [--name <n>]   View, edit, or set core soul memory
+  new <title> [-c <txt>] [-t <tags>]   Create a note in brain/ (-e opens editor)
+  open <title>                         Open note in $EDITOR
+  show <title> [--raw]                 Display note content
+  list [-n <count>] [--folder <f>]     List notes in vault
+  search <query> [-n <count>]          Full-text search
+  delete <title> [-f]                  Delete note
+  rename <old> <new>                   Rename note and update wikilinks
+  links <title>                        View outlinks and backlinks
+  tags [name]                          List tags or filter by tag
+  daily [-e]                           View or edit today's daily log
+  graph [-f ascii|dot|json] [-o file]  Export link graph
+  orphans                              List orphan notes
+  stats                                Knowledge base statistics
+  mcp                                  Launch MCP server for LLMs
+  help / quit / exit"""
 
 
-def cmd_repl(vault, args):
+def cmd_repl(vault: Vault, args) -> None:
     repl(vault)
 
 
-def repl(vault):
+def repl(vault: Vault) -> None:
     vault.ensure()
-    print(bold("🧠 大脑 · 交互模式"))
-    print(dim("输入「帮助」查看命令,「退出」离开。"))
+    print(bold("🧠 Brain · Interactive Shell"))
+    print(dim("Type 'help' for commands, 'exit' or 'quit' to leave."))
     parser = build_parser()
     while True:
         try:
-            line = input(cyan("🧠 大脑> ")).strip()
+            line = input(cyan("🧠 brain> ")).strip()
         except EOFError:
             print()
             break
         if not line:
             continue
-        if line in ("退出", "quit", "exit", "q"):
-            print(dim("再见 👋"))
+        if line.lower() in ("quit", "exit", "q", "退出"):
+            print(dim("Goodbye 👋"))
             break
-        if line in ("帮助", "help", "?"):
+        if line.lower() in ("help", "?", "帮助"):
             print(REPL_HELP)
             continue
         try:
@@ -369,7 +430,7 @@ def repl(vault):
         except SystemExit:
             if not TTY:
                 continue
-            print(dim("(输入「帮助」查看用法)"))
+            print(dim("(Type 'help' for usage)"))
         except (KeyboardInterrupt, EOFError):
             print()
             continue
@@ -377,93 +438,102 @@ def repl(vault):
             print(yellow(f"⚠️  {e}"))
 
 
-# ─────────────────────────── 参数解析 ───────────────────────────
+# ─────────────────────────── CLI Parser Builder ───────────────────────────
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="brain",
         description=(
-            "🧠 大脑 —— 面向 LLM 的 CLI 知识库(类 Obsidian):"
-            "Markdown 笔记、双向链接、中文全文搜索。"
+            "🧠 Brain — CLI-first knowledge base & second brain for LLMs:\n"
+            "Markdown notes, Obsidian-style [[wikilinks]], full-text search, and MCP server."
         ),
         epilog=(
-            "提示:`brain 交互` 进入交互式 shell;"
-            "`brain mcp` 启动 MCP 服务供 LLM 客户端使用。"
+            "Tips: Run `brain repl` for interactive shell;\n"
+            "`brain mcp` to run MCP server for LLM clients (Claude Code, Cursor, etc.)."
         ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
         "--vault",
-        metavar="目录",
-        help="知识库目录(默认:~/.brain,或环境变量 BRAIN_VAULT)",
+        metavar="DIR",
+        help="Vault directory (default: ~/.brain, or env BRAIN_VAULT)",
     )
     p.add_argument(
-        "-V", "--version", action="version", version=f"🧠 大脑 v{__version__}"
+        "-V", "--version", action="version", version=f"🧠 Brain v{__version__}"
     )
-    sub = p.add_subparsers(dest="cmd", metavar="命令")
+    sub = p.add_subparsers(dest="cmd", metavar="COMMAND")
 
-    def add(name, aliases, help_, func):
+    def add(name: str, aliases: list[str], help_: str, func):
         sp = sub.add_parser(name, aliases=aliases, help=help_)
         sp.set_defaults(func=func)
         return sp
 
-    add("初始化", ["init"], "初始化知识库目录", cmd_init)
+    add("init", ["initialize", "初始化"], "Initialize or verify vault directory structure", cmd_init)
 
-    sp = add("新建", ["new", "create"], "新建笔记", cmd_new)
-    sp.add_argument("title", help="笔记标题")
-    sp.add_argument("-c", "--content", help="初始内容(默认使用模板)")
-    sp.add_argument("-t", "--tags", nargs="*", default=None, help="标签列表")
-    sp.add_argument("-e", "--edit", action="store_true", help="创建后用 $EDITOR 打开")
+    sp = add("core", ["soul", "inti"], "View, edit, or configure core soul memory [inti brain][soul]", cmd_core)
+    sp.add_argument("name", nargs="?", default="soul", help="Core note name (default 'soul')")
+    sp.add_argument("-e", "--edit", action="store_true", help="Open core note in $EDITOR")
+    sp.add_argument("-s", "--set", help="Set core note content directly")
+    sp.add_argument("-l", "--list", action="store_true", help="List all core notes")
 
-    sp = add("打开", ["open", "edit"], "用编辑器打开笔记", cmd_open)
-    sp.add_argument("title")
+    sp = add("new", ["create", "add", "新建"], "Create a new note in brain/", cmd_new)
+    sp.add_argument("title", help="Note title")
+    sp.add_argument("-c", "--content", help="Initial content (default: template)")
+    sp.add_argument("-t", "--tags", nargs="*", default=None, help="List of tags")
+    sp.add_argument("-e", "--edit", action="store_true", help="Open in $EDITOR after creating")
+    sp.add_argument("--folder", default=BRAIN_DIR, choices=[BRAIN_DIR, CORE_DIR, DAILY_DIR], help=f"Folder to store in (default '{BRAIN_DIR}')")
 
-    sp = add("查看", ["show", "cat", "read"], "查看笔记内容", cmd_show)
-    sp.add_argument("title")
-    sp.add_argument("--raw", action="store_true", help="原样输出(不高亮链接)")
+    sp = add("open", ["edit", "打开"], "Open note in $EDITOR", cmd_open)
+    sp.add_argument("title", help="Note title")
 
-    sp = add("列表", ["list", "ls"], "列出全部笔记", cmd_list)
-    sp.add_argument("-n", "--limit", type=int, help="最多显示多少条")
+    sp = add("show", ["view", "cat", "read", "查看"], "Display note content", cmd_show)
+    sp.add_argument("title", help="Note title")
+    sp.add_argument("--raw", action="store_true", help="Print raw content without link highlights")
 
-    sp = add("搜索", ["search", "find", "grep"], "中文全文搜索", cmd_search)
-    sp.add_argument("query", help="关键词(支持中文)")
-    sp.add_argument("-n", "--limit", type=int, default=15, help="最多显示多少条(默认 15)")
+    sp = add("list", ["ls", "列表"], "List notes in the vault", cmd_list)
+    sp.add_argument("-n", "--limit", type=int, help="Maximum number of notes to display")
+    sp.add_argument("--folder", choices=[BRAIN_DIR, CORE_DIR, DAILY_DIR], help="Filter notes by folder")
 
-    sp = add("删除", ["delete", "rm", "remove"], "删除笔记", cmd_delete)
-    sp.add_argument("title")
-    sp.add_argument("-f", "--force", action="store_true", help="跳过确认")
+    sp = add("search", ["find", "grep", "搜索"], "Full-text search across all notes", cmd_search)
+    sp.add_argument("query", help="Search keyword or phrase")
+    sp.add_argument("-n", "--limit", type=int, default=15, help="Maximum results (default: 15)")
 
-    sp = add("重命名", ["rename", "mv"], "重命名笔记并同步链接", cmd_rename)
-    sp.add_argument("old")
-    sp.add_argument("new")
+    sp = add("delete", ["rm", "remove", "删除"], "Delete a note", cmd_delete)
+    sp.add_argument("title", help="Note title to delete")
+    sp.add_argument("-f", "--force", action="store_true", help="Skip confirmation prompt")
 
-    sp = add("链接", ["links", "backlinks"], "查看出链与反向链接", cmd_links)
-    sp.add_argument("title")
+    sp = add("rename", ["mv", "重命名"], "Rename a note and update all wikilinks", cmd_rename)
+    sp.add_argument("old", help="Current note title")
+    sp.add_argument("new", help="New note title")
 
-    sp = add("标签", ["tags", "tag"], "列出标签或按标签筛选", cmd_tags)
-    sp.add_argument("tag", nargs="?")
+    sp = add("links", ["backlinks", "链接"], "View forward links and backlinks", cmd_links)
+    sp.add_argument("title", help="Note title")
 
-    sp = add("日记", ["daily", "today"], "查看/创建今日笔记", cmd_daily)
-    sp.add_argument("-e", "--edit", action="store_true", help="用编辑器打开")
+    sp = add("tags", ["tag", "标签"], "List all tags or filter notes by tag", cmd_tags)
+    sp.add_argument("tag", nargs="?", help="Optional tag to filter by")
 
-    sp = add("图谱", ["graph"], "导出链接图谱", cmd_graph)
+    sp = add("daily", ["today", "journal", "日记"], "View or create today's daily log", cmd_daily)
+    sp.add_argument("-e", "--edit", action="store_true", help="Open daily note in $EDITOR")
+
+    sp = add("graph", ["图谱"], "Export link graph", cmd_graph)
     sp.add_argument(
         "-f",
         "--format",
         choices=["ascii", "dot", "json"],
         default="ascii",
-        help="输出格式(默认 ascii)",
+        help="Output format (default: ascii)",
     )
-    sp.add_argument("-o", "--out", metavar="文件", help="写入文件而非屏幕")
+    sp.add_argument("-o", "--out", metavar="FILE", help="Write graph to file instead of stdout")
 
-    add("孤立", ["orphans"], "列出孤立笔记", cmd_orphans)
-    add("统计", ["stats"], "知识库统计", cmd_stats)
-    add("交互", ["repl", "shell"], "进入交互式 shell", cmd_repl)
-    add("mcp", ["serve"], "启动 MCP 服务(供 LLM 客户端使用)", cmd_mcp)
+    add("orphans", ["孤立"], "List orphan notes (notes with no inlinks or outlinks)", cmd_orphans)
+    add("stats", ["status", "info", "统计"], "Knowledge base statistics", cmd_stats)
+    add("repl", ["shell", "interactive", "交互"], "Start interactive REPL shell", cmd_repl)
+    add("mcp", ["serve"], "Start MCP stdio server for LLM clients", cmd_mcp)
     return p
 
 
-def main(argv=None):
+def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     vault = Vault(args.vault)
@@ -474,16 +544,16 @@ def main(argv=None):
     try:
         func(vault, args)
     except FileExistsError as e:
-        print(yellow(f"⚠️  笔记已存在:{e}"))
+        print(yellow(f"⚠️  Note already exists: {e}"))
         return 1
     except FileNotFoundError as e:
-        print(yellow(f"⚠️  找不到笔记:{e}"))
+        print(yellow(f"⚠️  Note not found: {e}"))
         return 1
     except ValueError as e:
         print(yellow(f"⚠️  {e}"))
         return 1
     except KeyboardInterrupt:
-        print(dim("\n已中断"))
+        print(dim("\nAborted."))
         return 130
     return 0
 

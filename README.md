@@ -1,123 +1,152 @@
-# 🧠 大脑(Brain)
+# 🧠 Brain
 
-> 中文文档 · [English README](README.en.md) · [架构文档](doc/architecture.md)
+> English Documentation · [中文文档](README.zh.md) · [Architecture](doc/architecture.md)
 
-面向 LLM 的 **CLI 版 Obsidian**:用 Markdown 笔记、双向链接与中文全文搜索,构建你的第二大脑。
-纯 Python 标准库实现,零第三方依赖。
+**CLI-first Obsidian for LLMs**: Build your second brain with Markdown notes, bi-directional wikilinks, and high-performance full-text search.
+Implemented with zero external dependencies using the Python standard library.
 
-## 特性
+---
 
-- 📝 **Markdown 笔记**:标题即文件名,支持简易 frontmatter(`tags` / `aliases`)
-- 🔗 **Obsidian 风格双向链接**:`[[笔记]]`、`[[笔记|别名]]`、`[[笔记#小节]]`,自动解析与反向链接
-- 🏷️ **标签系统**:`#人工智能`、`#笔记/ML`,支持中文标签
-- 🔍 **中文全文搜索**:单字 + 二元组(bigram)分词,无需 jieba,标题/标签加权
-- 🕸️ **链接图谱**:ASCII 邻接表 / Graphviz DOT / JSON
-- 📅 **每日笔记**(日记),自动创建
-- 🧊 **孤立笔记**检测、📊 知识库统计、✏️ 重命名并自动同步所有链接
-- 💻 **交互式 shell**:`brain 交互`,全中文命令
-- 🤖 **MCP 服务**:让 Claude Code / Cursor 等任何支持 MCP 的 LLM 客户端把「大脑」当作记忆插件
+## 🏛️ Vault Architecture: Core, Brain & Daily
 
-## 安装
+The vault directory (defaults to `~/.brain` or `$BRAIN_VAULT`) organizes memory into distinct tiers:
+
+```
+~/.brain/
+├── core/                # Core directives, identity & soul [inti brain][soul]
+│   ├── soul.md          # Agent identity, persona & foundational guidelines
+│   └── memory.md        # Persistent facts & long-term user profile
+├── brain/               # Knowledge notes [judul][isi]
+│   ├── Concept A.md     # [Title].md holding title and Markdown content
+│   └── Concept B.md     # Interconnected with [[wikilinks]] and #tags
+├── daily/               # Episodic logs & journal entries
+│   └── 2026-11-10.md    # Daily notes auto-created by date
+└── README.md            # Vault overview and quick reference
+```
+
+- **`core/` [Core Brain / Soul]**: Fundamental directives, persona, and core rules. Managed via `brain core` and MCP tools `brain_get_core` / `brain_save_core`.
+- **`brain/` [Title / Content]**: Specific domain knowledge, ideas, documentation, and conceptual notes. Managed via `brain new`, `brain search`, etc.
+- **`daily/` [Episodic Journal]**: Daily logs and task lists managed via `brain daily`.
+
+---
+
+## ✨ Features
+
+- 📝 **Markdown Notes**: Clean files with simple frontmatter (`tags` / `aliases`) and standard Markdown formatting.
+- 🔗 **Obsidian-Style Wikilinks**: Supports `[[Note]]`, `[[Note|alias]]`, and `[[Note#section]]` with bi-directional backlink tracking.
+- 🏷️ **Tagging System**: `#ai`, `#notes/ml`, with support for nested and international tags.
+- 🔍 **Full-Text Search Engine**: Fast word-token search with built-in unigram + bigram support for CJK languages (no external tokenizer required). Weighted by title (3x), tags (2x), and content.
+- 🕸️ **Interactive & Exportable Graph**: ASCII adjacency view, Graphviz DOT, and JSON exports.
+- 📅 **Daily Notes**: Automatic template creation for daily planning and episodic logs.
+- 🧊 **Integrity Tools**: Orphan note detection, vault statistics, and rename with automatic global wikilink rewriting.
+- 💻 **Interactive REPL**: Run `brain repl` for an interactive shell session.
+- 🤖 **MCP Server (Model Context Protocol)**: Seamless long-term memory for Claude Code, Cursor, Codex, and any MCP-compatible AI client.
+
+---
+
+## 🚀 Installation
 
 ```bash
 cd brain-llm
-python3 -m venv .venv
-.venv/bin/pip install -e .
-# 之后即可使用 brain 命令(或 .venv/bin/brain)
+pip install -e .
+# The `brain` command is now available in your environment
 ```
 
-## 快速开始
+---
+
+## ⚡ Quick Start
 
 ```bash
-brain --vault ~/.brain 初始化
+# 1. Initialize the vault (~/.brain)
+brain init
 
-brain 新建 "机器学习基础" -t 人工智能 笔记
-brain 新建 "深度学习" -t 人工智能
-# 编辑内容,加入 [[机器学习基础]] 与 #人工智能
+# 2. View or edit core identity [inti brain][soul]
+brain core
+brain core -e
 
-brain 搜索 "人工智能"        # 中文全文搜索
-brain 列表                   # 全部笔记(按更新时间)
-brain 链接 "机器学习基础"     # 出链与反向链接
-brain 标签                   # 所有标签
-brain 图谱                   # ASCII 图谱(-f dot / -f json)
-brain 孤立                   # 孤立笔记
-brain 统计                   # 统计信息
-brain 日记                   # 今日笔记
-brain 交互                   # 进入交互式 shell
+# 3. Create domain knowledge notes in brain/ [judul][isi]
+brain new "Machine Learning" -t ai ml
+brain new "Deep Learning" -t ai ml -c "# Deep Learning\n\nBranch of [[Machine Learning]]."
+
+# 4. Search and browse
+brain search "learning"     # Full-text search
+brain list                  # List notes with folder/category indicator
+brain links "Deep Learning" # Inspect forward links and backlinks
+brain tags                  # View all tags
+brain graph                 # Render ASCII graph (-f dot / -f json also available)
+brain stats                 # View vault statistics
+brain daily                 # Open or view today's daily log
+brain repl                  # Enter interactive shell
 ```
 
-全局选项:
+### Global Options
+- `--vault <dir>`: Custom vault directory (defaults to `~/.brain`, or environment variable `BRAIN_VAULT`).
+- `EDITOR`: Editor used by `brain open` and `-e` flags (e.g. `export EDITOR=nano`).
 
-- `--vault 目录`:指定知识库位置(默认 `~/.brain`,也可用环境变量 `BRAIN_VAULT`)
-- `EDITOR` 环境变量:指定编辑器(`brain 打开` / `-e` 使用)
+---
 
-## 命令一览
+## 📖 CLI Command Reference
 
-| 命令 | 别名 | 说明 |
+| Command | Aliases | Description |
 | --- | --- | --- |
-| `初始化` | `init` | 初始化知识库目录 |
-| `新建 <标题>` | `new` | 新建笔记(`-c` 内容,`-t` 标签,`-e` 编辑) |
-| `打开 <标题>` | `open` | 用 `$EDITOR` 打开 |
-| `查看 <标题>` | `show` | 查看内容(`--raw` 原样输出) |
-| `列表` | `list`, `ls` | 列出全部笔记(`-n` 限制) |
-| `搜索 <关键词>` | `search` | 中文全文搜索(`-n` 限制) |
-| `删除 <标题>` | `delete`, `rm` | 删除(`-f` 跳过确认) |
-| `重命名 <旧> <新>` | `rename` | 重命名并同步所有链接 |
-| `链接 <标题>` | `links` | 出链与反向链接 |
-| `标签 [标签名]` | `tags` | 列出标签 / 按标签筛选 |
-| `日记` | `daily` | 查看/创建今日笔记 |
-| `图谱` | `graph` | 导出图谱(`-f ascii\|dot\|json`,`-o` 写文件) |
-| `孤立` | `orphans` | 列出孤立笔记 |
-| `统计` | `stats` | 知识库统计 |
-| `交互` | `repl` | 交互式 shell |
-| `mcp` | `serve` | 启动 MCP 服务(供 LLM 使用) |
+| `init` | `initialize`, `初始化` | Initialize or verify vault structure (`core/`, `brain/`, `daily/`) |
+| `core [name]` | `soul`, `inti` | View, edit (`-e`), set (`-s`), or list (`-l`) core soul memory |
+| `new <title>` | `create`, `add`, `新建` | Create note in `brain/` (`-c` content, `-t` tags, `-e` edit, `--folder`) |
+| `open <title>` | `edit`, `打开` | Open note in `$EDITOR` |
+| `show <title>` | `view`, `cat`, `read`, `查看` | Display note content (`--raw` for unhighlighted output) |
+| `list` | `ls`, `列表` | List notes with folder and tag columns (`-n` limit, `--folder`) |
+| `search <query>` | `find`, `grep`, `搜索` | Full-text search across all notes (`-n` limit) |
+| `delete <title>` | `rm`, `remove`, `删除` | Delete note (`-f` to skip confirmation) |
+| `rename <old> <new>` | `mv`, `重命名` | Rename note and rewrite all `[[wikilinks]]` in the vault |
+| `links <title>` | `backlinks`, `链接` | Inspect outlinks and incoming backlinks |
+| `tags [tag]` | `tag`, `标签` | List all tags or filter notes by a tag |
+| `daily` | `today`, `journal`, `日记` | View or create today's daily log (`-e` to edit) |
+| `graph` | `图谱` | Export link graph (`-f ascii\|dot\|json`, `-o <file>`) |
+| `orphans` | `孤立` | List orphan notes (notes with no inlinks or outlinks) |
+| `stats` | `status`, `info`, `统计` | Vault statistics (notes, links, tags, orphans) |
+| `repl` | `shell`, `interactive`, `交互` | Enter interactive REPL shell |
+| `mcp` | `serve` | Launch MCP stdio server for LLM integration |
 
-## 中文搜索原理
+---
 
-查询「人工智能」会被拆成 **单字**(人/工/智/能)与 **二元组**(人工/工智/智能),
-与笔记正文、标题、标签中的词元匹配,命中越多得分越高;标题权重 ×3、标签 ×2。
-因此搜「人工智慧」也能召回「人工智能」的笔记(简繁/词形相近的容错)。
+## 🤖 LLM & MCP Integration
 
-## 接入 LLM(MCP)
+Brain provides a built-in MCP (Model Context Protocol) server exposing tools for LLM agents:
 
-「大脑」内置 MCP 服务器,提供 11 个中文工具:
-`brain_search` / `brain_get` / `brain_save` / `brain_delete` / `brain_list` /
-`brain_tags` / `brain_links` / `brain_graph` / `brain_orphans` / `brain_stats` / `brain_daily`。
+- `brain_get_core`: Retrieve core directives and soul identity.
+- `brain_save_core`: Update core persona and persistent directives.
+- `brain_search`: Full-text search across all notes with relevance scoring and snippets.
+- `brain_get`: Fetch the full Markdown content of a note.
+- `brain_save`: Create or update a note in the knowledge base.
+- `brain_delete`: Delete a note.
+- `brain_list`: List notes with category and tag filtering.
+- `brain_daily`: Retrieve or append to today's daily log.
+- `brain_links`: Inspect forward links and backlinks.
+- `brain_graph`: Export link graph for contextual graph navigation.
+- `brain_tags`: View tags index.
+- `brain_stats`: Overview of vault health and stats.
 
-**Claude Code:**
+### Claude Code Setup
 
 ```bash
 claude mcp add brain -- brain --vault ~/.brain mcp
 ```
 
-**Cursor(~/.cursor/mcp.json)或任何支持 MCP 的客户端:**
+### Cursor Setup (`~/.cursor/mcp.json`)
 
 ```json
 {
   "mcpServers": {
     "brain": {
       "command": "brain",
-      "args": ["--vault", "/home/你的用户名/.brain", "mcp"]
+      "args": ["--vault", "/home/your_user/.brain", "mcp"]
     }
   }
 }
 ```
 
-## 仓库结构
+---
 
-```
-~/.brain/
-├── README.md
-├── 机器学习基础.md
-├── 深度学习.md
-└── 2026-11-10.md      # 每日笔记
-```
+## 📄 License
 
-笔记即文件,可用任何编辑器直接修改;链接、标签会在下次命令执行时自动重建。
-
-## 开发
-
-```bash
-python -m unittest discover -s tests -v   # 运行测试
-python -m brain --vault ~/.brain 搜索 人工智能   # 不安装直接运行
-```
+MIT

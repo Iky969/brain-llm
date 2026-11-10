@@ -1,8 +1,10 @@
-"""中文全文搜索:英文按词、中文按单字 + 二元组(bigram)建立索引并排序。
+"""Full-text search engine for Brain.
 
-纯标准库实现,无需 jieba 等分词依赖:
-- 英文/数字:整词(小写)
-- 中文:单字 + 相邻二元组,标题与标签加权
+Supports English words, numbers, and identifiers, plus unigram & bigram tokenization
+for CJK characters without external dependencies:
+- English & alphanumeric: whole lowercase words/tokens
+- CJK characters: unigrams + adjacent bigrams
+- Weighted scoring: title (3x), tags (2x), body (1x), plus whole-term bonuses.
 """
 from __future__ import annotations
 
@@ -14,8 +16,9 @@ WORD_RE = re.compile(r"[A-Za-z0-9_]+")
 CJK_RUN_RE = re.compile("[" + CJK + "]+")
 
 
-def tokenize(text: str) -> set:
-    toks = set()
+def tokenize(text: str) -> set[str]:
+    """Tokenize text into lowercase words and CJK unigrams/bigrams."""
+    toks: set[str] = set()
     for m in WORD_RE.finditer(text):
         toks.add(m.group(0).lower())
     for run in CJK_RUN_RE.finditer(text):
@@ -23,14 +26,14 @@ def tokenize(text: str) -> set:
         for i in range(len(s)):
             toks.add(s[i])
         for i in range(len(s) - 1):
-            toks.add(s[i:i + 2])
+            toks.add(s[i : i + 2])
     return toks
 
 
-def build_index(note) -> dict:
-    idx = {}
+def build_index(note) -> dict[str, int]:
+    idx: dict[str, int] = {}
 
-    def add(text, weight):
+    def add(text: str, weight: int):
         for t in tokenize(text):
             w = weight * (2 if len(t) > 1 else 1)
             idx[t] = idx.get(t, 0) + w
@@ -41,7 +44,7 @@ def build_index(note) -> dict:
     return idx
 
 
-def search(notes, query, limit=20):
+def search(notes, query: str, limit: int = 20):
     q = query.strip()
     if not q:
         return []
@@ -63,7 +66,7 @@ def search(notes, query, limit=20):
     return results[:limit]
 
 
-def snippet(text, query, width=90):
+def snippet(text: str, query: str, width: int = 90) -> str:
     raw = query.strip().lower()
     pos = text.lower().find(raw)
     if pos < 0:

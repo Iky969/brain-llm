@@ -1,9 +1,14 @@
-"""🧠 大脑 —— 知识库核心。
+"""🧠 Brain — Knowledge Base Core Engine.
 
-笔记以 Markdown 文件存储在 vault(仓库)目录中,支持:
-- Obsidian 风格 ``[[双向链接]]``(含 ``|别名`` 与 ``#小节``)
-- ``#标签``(支持中文标签)
-- 简易 YAML frontmatter(``tags`` / ``aliases``)
+Notes are stored as Markdown files in the vault directory with:
+- Obsidian-style ``[[wikilinks]]`` (including ``|alias`` and ``#section``)
+- ``#tags`` (including alphanumeric and international tags)
+- Simple YAML frontmatter (``tags`` / ``aliases``)
+
+Vault Directory Structure:
+- ``core/``  : Core identity, persona, rules, and soul memory ([inti brain][soul])
+- ``brain/`` : Structured knowledge notes ([title][content])
+- ``daily/`` : Daily journal and episodic logs (YYYY-MM-DD.md)
 """
 from __future__ import annotations
 
@@ -19,9 +24,17 @@ __all__ = [
     "parse_note",
     "note_template",
     "daily_template",
+    "soul_template",
     "CJK",
     "LINK_RE",
+    "CORE_DIR",
+    "BRAIN_DIR",
+    "DAILY_DIR",
 ]
+
+CORE_DIR = "core"
+BRAIN_DIR = "brain"
+DAILY_DIR = "daily"
 
 CJK = "㐀-䶿一-鿿豈-﫿"
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
@@ -30,21 +43,55 @@ FRONT_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?\n?", re.S)
 FENCE_RE = re.compile(r"```.*?```", re.S)
 INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 MD_SUFFIXES = (".md", ".markdown")
-WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+WEEKDAYS = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
 
-README_TEMPLATE = """# 🧠 大脑知识库
+DEFAULT_SOUL_TEMPLATE = """# 🧠 Core Soul & Directives
 
-这是「大脑」的默认仓库。所有笔记均为 Markdown 文件,支持 `[[双向链接]]` 与「标签」系统。
+<!-- Created: {today} -->
 
-## 常用命令
+## Identity
+- Name: Brain LLM
+- Role: AI Long-Term Memory & Second Brain
+- Core Purpose: Retain context, maintain structured knowledge, and preserve continuity across sessions.
 
-- `brain 新建 "标题"` 创建笔记
-- `brain 搜索 "关键词"` 中文全文搜索
-- `brain 列表` 浏览全部笔记
-- `brain 链接 "标题"` 查看反向链接
-- `brain 图谱` 导出链接图谱
-- `brain 交互` 进入交互式 shell
-- `brain mcp` 启动 MCP 服务(供 LLM 客户端使用)
+## Core Directives
+1. Maintain truthfulness, clarity, and concise structure.
+2. Interconnect concepts using `[[wikilinks]]`.
+3. Categorize topics under `#tags`.
+4. Keep identity, persona, and foundational directives in `core/`.
+5. Store domain knowledge and general notes (`[Title][Content]`) in `brain/`.
+6. Store time-based logs in `daily/`.
+"""
+
+README_TEMPLATE = """# 🧠 Brain Vault
+
+This is the default Brain knowledge base repository. All notes are stored as Markdown files with Obsidian-compatible `[[wikilinks]]` and `#tags`.
+
+## Vault Structure
+- `core/`  : Core identity, system soul, and persistent directives (`soul.md`, `memory.md`).
+- `brain/` : Knowledge notes (`[Title].md`) containing domain concepts and content (`[judul][isi]`).
+- `daily/` : Daily journal entries (`YYYY-MM-DD.md`) for episodic memory and logs.
+
+## CLI Commands
+- `brain init`               : Initialize or verify vault structure
+- `brain core`               : View or edit core soul memory
+- `brain new "Title"`        : Create a new note in `brain/`
+- `brain search "keyword"`   : Full-text search across all notes
+- `brain list`               : Browse all notes with category indicators
+- `brain show "Title"`       : View note content
+- `brain links "Title"`      : View forward links and backlinks
+- `brain graph`              : Export knowledge graph
+- `brain daily`              : View or create today's daily log
+- `brain repl`               : Interactive shell
+- `brain mcp`                : Launch MCP server for LLMs
 """
 
 
@@ -57,6 +104,7 @@ class Note:
     tags: list = field(default_factory=list)
     links: list = field(default_factory=list)
     mtime: float = 0.0
+    folder: str = ""
 
     @property
     def stem(self) -> str:
@@ -65,6 +113,10 @@ class Note:
     @property
     def title(self) -> str:
         return self.path.stem
+
+    @property
+    def category(self) -> str:
+        return self.folder or "root"
 
     @property
     def updated(self) -> str:
@@ -91,11 +143,11 @@ def parse_frontmatter(text: str) -> dict:
 
 
 def _strip_code(text: str) -> str:
-    """去掉围栏代码块与行内代码,避免把示例中的 [[链接]] / #标签 当作真内容。"""
+    """Remove fenced code blocks and inline code spans to avoid false wikilinks/tags."""
     return INLINE_CODE_RE.sub(" ", FENCE_RE.sub(" ", text))
 
 
-def parse_note(path) -> Note:
+def parse_note(path, folder: str = "") -> Note:
     path = Path(path)
     content = path.read_text(encoding="utf-8")
     front: dict = {}
@@ -125,17 +177,24 @@ def parse_note(path) -> Note:
         tags=tags,
         links=links,
         mtime=path.stat().st_mtime,
+        folder=folder,
     )
+
+
+def soul_template() -> str:
+    today = datetime.date.today().isoformat()
+    return DEFAULT_SOUL_TEMPLATE.format(today=today)
 
 
 def note_template(title: str, tags=None) -> str:
     today = datetime.date.today().isoformat()
     tagline = " ".join("#" + t for t in (tags or []))
+    tag_block = f"{tagline}\n\n" if tagline else ""
     return (
         f"# {title}\n\n"
-        f"<!-- 创建:{today} -->\n\n"
-        f"{tagline}\n\n"
-        f"## 概要\n\n## 笔记\n\n## 相关链接\n"
+        f"<!-- Created: {today} -->\n\n"
+        f"{tag_block}"
+        f"## Overview\n\n## Content\n\n## Related Links\n"
     )
 
 
@@ -143,12 +202,12 @@ def daily_template(date=None) -> str:
     d = date or datetime.date.today()
     return (
         f"# {d.isoformat()} {WEEKDAYS[d.weekday()]}\n\n"
-        "## 今日计划\n\n## 记录\n\n## 灵感\n\n## 链接\n"
+        "## Today's Plan\n\n## Notes & Logs\n\n## Ideas\n\n## Links\n"
     )
 
 
 class Vault:
-    """知识库仓库:一组 Markdown 笔记的集合。"""
+    """Knowledge base vault: organized collection of Markdown notes."""
 
     def __init__(self, path=None):
         if path is None:
@@ -170,18 +229,29 @@ class Vault:
         self._rmap_cache = None
 
     def ensure(self) -> None:
+        """Create vault root and standard directories: core/, brain/, daily/."""
         self.path.mkdir(parents=True, exist_ok=True)
+        (self.path / CORE_DIR).mkdir(parents=True, exist_ok=True)
+        (self.path / BRAIN_DIR).mkdir(parents=True, exist_ok=True)
+        (self.path / DAILY_DIR).mkdir(parents=True, exist_ok=True)
+
         readme = self.path / "README.md"
         if not readme.exists():
             readme.write_text(README_TEMPLATE, encoding="utf-8")
+
+        soul = self.path / CORE_DIR / "soul.md"
+        if not soul.exists():
+            soul.write_text(soul_template(), encoding="utf-8")
+
         self.invalidate_cache()
 
     @staticmethod
     def safe_filename(title: str) -> str:
         name = re.sub(r'[\\/:*?"<>|]', "_", str(title)).strip().strip(". ")
-        return (name or "未命名") + ".md"
+        return (name or "Untitled") + ".md"
 
-    def notes(self) -> list:
+    def notes(self, folder: str | None = None) -> list[Note]:
+        """Scan all markdown notes. Can filter by subfolder ('core', 'brain', 'daily')."""
         if not self.path.is_dir():
             return []
         out = []
@@ -193,10 +263,14 @@ class Vault:
             rel = p.relative_to(self.path)
             if any(part.startswith(".") for part in rel.parts):
                 continue
-            out.append(parse_note(p))
+            note_folder = rel.parts[0] if len(rel.parts) > 1 else ""
+            if folder is not None and note_folder != folder:
+                continue
+            out.append(parse_note(p, folder=note_folder))
         return out
 
-    def find(self, name):
+    def find(self, name: str | None) -> Note | None:
+        """Find note by stem, relative path, or case-insensitive title."""
         if name is None:
             return None
         n = str(name).strip()
@@ -204,9 +278,21 @@ class Vault:
             n = n[:-3]
         if not n:
             return None
-        direct = self.path / self.safe_filename(n)
-        if direct.is_file():
-            return parse_note(direct)
+
+        # Direct check in subfolders or root
+        safe_name = self.safe_filename(n)
+        for check in (
+            self.path / BRAIN_DIR / safe_name,
+            self.path / CORE_DIR / safe_name,
+            self.path / DAILY_DIR / safe_name,
+            self.path / safe_name,
+            self.path / (n + ".md"),
+        ):
+            if check.is_file():
+                rel = check.relative_to(self.path)
+                folder = rel.parts[0] if len(rel.parts) > 1 else ""
+                return parse_note(check, folder=folder)
+
         notes = self.notes()
         for note in notes:
             if note.path.stem == n:
@@ -215,40 +301,97 @@ class Vault:
         for note in notes:
             if note.path.stem.lower() == low:
                 return note
+        # Check relative path match e.g. core/soul
+        for note in notes:
+            rel_stem = str(note.path.relative_to(self.path).with_suffix(""))
+            if rel_stem.lower() == low:
+                return note
         return None
 
-    def create(self, title, content=None, tags=None):
+    def create(self, title: str, content: str | None = None, tags=None, folder: str = BRAIN_DIR) -> Note:
+        """Create a new note. Defaults to the brain/ knowledge folder."""
         title = str(title).strip()
         if not title:
-            raise ValueError("笔记标题不能为空")
-        path = self.path / self.safe_filename(title)
+            raise ValueError("Note title cannot be empty")
+
+        # Allow prefixing folder in title e.g. "core/custom" or "daily/2026-11-10"
+        if "/" in title or "\\" in title:
+            parts = re.split(r"[/\\]", title, maxsplit=1)
+            if parts[0].lower() in (CORE_DIR, BRAIN_DIR, DAILY_DIR):
+                folder = parts[0].lower()
+                title = parts[1]
+
+        target_dir = self.path / folder
+        path = target_dir / self.safe_filename(title)
         if path.exists():
             raise FileExistsError(str(path))
+
         if content is None:
-            content = note_template(title, tags)
+            if folder == CORE_DIR and title.lower() == "soul":
+                content = soul_template()
+            else:
+                content = note_template(title, tags)
+
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         self.invalidate_cache()
-        return parse_note(path)
+        return parse_note(path, folder=folder)
 
-    def save(self, note, content):
+    def get_core(self, name: str = "soul") -> Note | None:
+        """Retrieve a note from the core/ [inti brain][soul] folder."""
+        safe_name = self.safe_filename(name)
+        target = self.path / CORE_DIR / safe_name
+        if target.is_file():
+            return parse_note(target, folder=CORE_DIR)
+        for n in self.notes(folder=CORE_DIR):
+            if n.stem.lower() == name.lower():
+                return n
+        return None
+
+    def save_core(self, name: str = "soul", content: str | None = None) -> Note:
+        """Create or update a core soul/directive note."""
+        (self.path / CORE_DIR).mkdir(parents=True, exist_ok=True)
+        target = self.path / CORE_DIR / self.safe_filename(name)
+        if content is None:
+            content = soul_template()
+        target.write_text(content, encoding="utf-8")
+        self.invalidate_cache()
+        return parse_note(target, folder=CORE_DIR)
+
+    def core_notes(self) -> list[Note]:
+        """Return all notes in the core/ folder."""
+        return self.notes(folder=CORE_DIR)
+
+    def brain_notes(self) -> list[Note]:
+        """Return all knowledge notes in brain/ (and root non-core/daily notes except README)."""
+        all_notes = self.notes()
+        return [
+            n for n in all_notes
+            if n.folder == BRAIN_DIR or (not n.folder and n.stem.lower() != "readme")
+        ]
+
+    def daily_notes(self) -> list[Note]:
+        """Return all notes in daily/."""
+        return self.notes(folder=DAILY_DIR)
+
+    def save(self, note: Note, content: str) -> Note:
         note.path.parent.mkdir(parents=True, exist_ok=True)
         note.path.write_text(content, encoding="utf-8")
         self.invalidate_cache()
-        return parse_note(note.path)
+        return parse_note(note.path, folder=note.folder)
 
-    def delete(self, note):
+    def delete(self, note: Note) -> None:
         note.path.unlink()
         self.invalidate_cache()
 
-    def rename(self, old_title, new_title):
+    def rename(self, old_title: str, new_title: str):
         note = self.find(old_title)
         if note is None:
             raise FileNotFoundError(old_title)
         new_title = str(new_title).strip()
         if not new_title:
-            raise ValueError("新标题不能为空")
-        new_path = self.path / self.safe_filename(new_title)
+            raise ValueError("New title cannot be empty")
+        new_path = note.path.parent / self.safe_filename(new_title)
         if new_path.exists() and new_path.resolve() != note.path.resolve():
             raise FileExistsError(str(new_path))
         old = note.path.stem
@@ -273,9 +416,9 @@ class Vault:
                 self.save(n, new_content)
                 changed += 1
         self.invalidate_cache()
-        return parse_note(new_path), changed
+        return parse_note(new_path, folder=note.folder), changed
 
-    def resolve_map(self):
+    def resolve_map(self) -> dict[str, str]:
         return {n.path.stem.lower(): n.path.stem for n in self.notes()}
 
     def _rmap(self):
@@ -283,13 +426,13 @@ class Vault:
             self._rmap_cache = self.resolve_map()
         return self._rmap_cache
 
-    def resolve_link(self, target):
+    def resolve_link(self, target: str) -> str | None:
         target = str(target).split("|", 1)[0].split("#", 1)[0].strip()
         if not target:
             return None
         return self._rmap().get(target.lower())
 
-    def outlinks(self, note):
+    def outlinks(self, note: Note) -> list[tuple[str, str | None]]:
         out = []
         seen = set()
         for raw in note.links:
@@ -300,7 +443,7 @@ class Vault:
                 out.append((raw, resolved))
         return out
 
-    def backlinks(self, title):
+    def backlinks(self, title: str) -> list[Note]:
         res = []
         rmap = self._rmap()
         for n in self.notes():
@@ -312,18 +455,19 @@ class Vault:
                     break
         return res
 
-    def tags_index(self):
+    def tags_index(self) -> dict[str, list[Note]]:
         idx = {}
         for n in self.notes():
             for t in n.tags:
                 idx.setdefault(t, []).append(n)
         return idx
 
-    def daily_path(self, date=None):
+    def daily_path(self, date=None) -> Path:
         d = date or datetime.date.today()
-        return self.path / f"{d.isoformat()}.md"
+        (self.path / DAILY_DIR).mkdir(parents=True, exist_ok=True)
+        return self.path / DAILY_DIR / f"{d.isoformat()}.md"
 
-    def stats(self):
+    def stats(self) -> dict:
         notes = self.notes()
         rmap = self.resolve_map()
         resolved = broken = 0
@@ -343,15 +487,20 @@ class Vault:
         orphans = [
             n.path.stem
             for n in notes
-            if not inn.get(n.path.stem) and not outn.get(n.path.stem)
+            if not inn.get(n.path.stem)
+            and not outn.get(n.path.stem)
+            and n.path.stem.lower() != "readme"
         ]
         return {
-            "笔记总数": len(notes),
-            "总字数": sum(len(n.content) for n in notes),
-            "链接总数": resolved + broken,
-            "有效链接": resolved,
-            "失效链接": broken,
-            "标签总数": len(self.tags_index()),
-            "孤立笔记": len(orphans),
-            "仓库路径": str(self.path),
+            "total_notes": len(notes),
+            "core_notes": len(self.core_notes()),
+            "brain_notes": len(self.brain_notes()),
+            "daily_notes": len(self.daily_notes()),
+            "total_chars": sum(len(n.content) for n in notes),
+            "total_links": resolved + broken,
+            "valid_links": resolved,
+            "broken_links": broken,
+            "total_tags": len(self.tags_index()),
+            "orphan_notes": len(orphans),
+            "vault_path": str(self.path),
         }
