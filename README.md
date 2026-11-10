@@ -46,10 +46,20 @@ The vault directory (defaults to `~/.brain` or `$BRAIN_VAULT`) organizes memory 
 
 ## 🚀 Installation
 
+### One-line Install (Recommended)
+
+Install or update Brain with a single command via `curl | bash`:
+
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Iky969/brain-llm/main/install.sh | bash
+```
+
+### Manual Install via Git
+
+```bash
+git clone https://github.com/Iky969/brain-llm.git
 cd brain-llm
 pip install -e .
-# The `brain` command is now available in your environment
 ```
 
 ---
@@ -149,4 +159,4 @@ claude mcp add brain -- brain --vault ~/.brain mcp
 
 ## 📄 License
 
-MIT
+This project is licensed under the [MIT License](LICENSE) © 2026 Iky969.

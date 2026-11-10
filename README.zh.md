@@ -19,11 +19,20 @@
 
 ## 安装
 
+### 一键安装 (推荐)
+
+使用 `curl | bash` 快速安装或更新:
+
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Iky969/brain-llm/main/install.sh | bash
+```
+
+### 手动安装 (Git)
+
+```bash
+git clone https://github.com/Iky969/brain-llm.git
 cd brain-llm
-python3 -m venv .venv
-.venv/bin/pip install -e .
-# 之后即可使用 brain 命令(或 .venv/bin/brain)
+pip install -e .
 ```
 
 ## 快速开始
