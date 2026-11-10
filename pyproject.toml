@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brain-llm"
+version = "0.1.0"
+description = "🧠 大脑 —— 面向 LLM 的 CLI 知识库(类 Obsidian):Markdown 笔记、双向链接、中文全文搜索"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["obsidian", "cli", "markdown", "second-brain", "mcp", "llm", "知识库"]
+
+[project.scripts]
+brain = "brain.cli:main"
+
+[tool.setuptools]
+packages = ["brain"]
